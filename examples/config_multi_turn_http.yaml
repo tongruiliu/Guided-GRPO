@@ -1,0 +1,168 @@
+data:
+  train_files:  # TODO: set to your real training data path (e.g., /path/to/train.parquet or dataset@train)
+  val_files:  # TODO: set to your real validation data path (e.g., /path/to/val.parquet or dataset@test)
+  prompt_key: problem
+  answer_key: answer
+  image_key: images
+  video_key: videos
+  image_dir: null
+  video_fps: 2.0
+  max_prompt_length: 15000   
+  max_response_length: 1024
+  rollout_batch_size: 128
+  mini_rollout_batch_size: null
+  val_batch_size: 1024
+  format_prompt: ./examples/format_prompt/math.jinja
+  system_prompt: |
+    You are the student solving the math problem, collaborating with a verifier. Use <think>...</think> for reasoning and <answer>...</answer> for visible content.
+    You may take up to 3–6 concise steps per turn (not limited to one step), and end with a brief checkpoint question for the verifier.
+    When you provide the final answer, output it exactly once as <answer>\boxed{final result}</answer>. Never output placeholders like \boxed{?}. Do NOT output ###STOP###. Keep responses concise and precise.
+  override_chat_template: null
+  shuffle: true
+  seed: 1
+  min_pixels: 262144
+  max_pixels: 4194304
+  filter_overlong_prompts: true
+
+algorithm:
+  adv_estimator: grpo
+  disable_kl: false
+  use_kl_loss: true
+  kl_penalty: low_var_kl
+  kl_coef: 1.0e-2
+  online_filtering: false
+  filter_key: overall
+  filter_low: 0.01
+  filter_high: 0.99
+
+worker:
+  actor:
+    global_batch_size: 128
+    micro_batch_size_per_device_for_update: 1
+    micro_batch_size_per_device_for_experience: 2
+    max_grad_norm: 1.0
+    padding_free: true
+    dynamic_batching: true
+    ulysses_size: 1
+    model:
+      model_path: Qwen/Qwen3-VL-8B-Instruct
+      enable_gradient_checkpointing: true
+      trust_remote_code: false
+      freeze_vision_tower: false
+    optim:
+      lr: 2.0e-6
+      weight_decay: 1.0e-2
+      strategy: adamw
+      lr_warmup_ratio: 0.0
+    fsdp:
+      enable_full_shard: true
+      enable_cpu_offload: false
+      enable_rank0_init: true
+    offload:
+      offload_params: true
+      offload_optimizer: true
+
+  rollout:
+    n: 8  # 8
+    temperature: 1.0
+    top_p: 1.0
+    limit_images: 1
+    gpu_memory_utilization: 0.6
+    enforce_eager: true
+    enable_chunked_prefill: false
+    enable_sleep_mode: false
+    tensor_parallel_size: 1
+    max_model_len: 27000
+    prompt_truncation: left
+    disable_tqdm: false
+    val_override_config:
+      temperature: 1.0
+      top_p: 0.95
+      n: 1
+    verifier:
+      enable: true  # true
+      use_http: true # true
+      base_url: # This is the reasoning service API
+      model: ve
+      api_key: # API_KEY
+      http_timeout: 120.0
+      http_max_retries: 2
+      http_retry_interval: 10.0
+      tokenizer_path: null
+      trust_remote_code: true
+      enable_hallucination_score: false
+      temperature: 0.0
+      top_p: 0.95
+      top_k: 0
+      max_tokens: 256
+      max_turns: 10
+      stop_token: "###STOP###"
+      prompt_template: |
+        You are a professional "Verifier-Guide" teacher.
+
+        Your task is to facilitate the student's independent problem-solving process by providing proactive error correction and minimal guidance. You must ensure the student leads the reasoning while you strictly monitor for accuracy.
+
+        ### Operational Guidelines
+        **1. Immediate Error Correction (Priority #1):**
+           - At every turn, first check the student's narration, formulas, units, and logic.
+           - If an error is found, strictly output: "Reason for Error + How to Correct/Direction".
+           - Do not let the student build upon a mistake.
+
+        **2. Minimal Guidance Strategy:**
+           - Student Leads: Allow the student to attempt the reasoning first.
+           - Stuck Points: If the student is stuck, provide only the minimal cue needed to unlock the immediate next step.
+           - Verification: When a step is correct, briefly affirm it (e.g., "Correct.") and define the next immediate, small objective.
+
+        **3. Stop Signal Discipline (STRICT):**
+           - Do NOT output `###STOP###` during guidance.
+           - "Student" refers to the assistant. A final answer must be wrapped in <answer>...</answer>, and the numeric/symbolic result must appear inside \boxed{...}.
+           - If the student's "final answer" is missing the required format (no <answer> or no \boxed{...}), do not send STOP; instead, instruct them to fix the format.
+           - Once the student provides a correctly formatted final answer, immediately send a single message containing ONLY `###STOP###` to close—no confirmation text, no extra hashes.
+
+        **4. Negative Constraints (What NOT to do):**
+           - NO Solving: Do not provide the complete solution, do not write multiple derivation steps, and do not calculate the final result.
+           - NO Fluff: Avoid vague evaluations or lengthy explanations.
+
+        ### Output Requirements
+        - Language: English.
+        - Style: Brief, specific, and actionable.
+        - Structure: Each response must contain only one small piece of guidance or correction, and end with a clear, answerable question or checkpoint for the student.
+        - After the final answer is confirmed, send a standalone `###STOP###` message.
+
+        ### Scoring
+        - Definition of hallucination: any invented/unsupported/incorrect content relative to the task or given information (e.g., inventing non-existent points/lines/angles, fabricating data, or asserting results without basis in the problem). Adding a clearly declared construction/auxiliary line is allowed if it is explicitly introduced (e.g., "construct segment AE...").
+        - For each assistant reply, evaluate the previous user message: if you detect hallucination, set `hallucination_detect=0`; otherwise set `hallucination_detect=1`.
+        - Append at the end of every assistant reply a single line `[SCORE] hallucination_detect=0|1`. Do not include any other scores.
+    max_num_batched_tokens: 17000 #17000
+
+  ref:
+    fsdp:
+      enable_full_shard: true
+      enable_cpu_offload: true
+      enable_rank0_init: true
+    offload:
+      offload_params: false
+
+  reward:
+    reward_type: batch
+    reward_function: ./examples/reward_function/math.py:compute_score
+
+trainer:
+  total_epochs: 15
+  max_steps: null
+  project_name: easy_r1
+  experiment_name: rl_8b_ggrpo
+  logger: ["file", "wandb", "tensorboard", "console"] 
+  nnodes: 2 
+  n_gpus_per_node: 8
+  max_try_make_batch: 20
+  val_freq: 5
+  val_before_train: true
+  val_only: false
+  val_generations_to_log: 5
+  save_freq: 5
+  save_limit: 5
+  save_model_only: false
+  save_checkpoint_path: null
+  load_checkpoint_path: null
+  find_last_checkpoint: true
