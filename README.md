@@ -10,13 +10,11 @@ This repository contains Guided‑GRPO, a framework that injects **process‑lev
 - [Code Map](#code-map)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
-- [Guided‑GRPO (Multi‑Turn Verifier)](#guided-grpo-multi-turn-verifier)
 - [Configuration](#configuration)
 - [Data Format](#data-format)
 - [Reward Functions](#reward-functions)
 - [Logging & Checkpoints](#logging--checkpoints)
 - [Limitations](#limitations)
-- [Roadmap](#roadmap)
 - [Citation](#citation)
 - [License](#license)
 
@@ -31,22 +29,29 @@ Guided‑GRPO is an RL paradigm that turns open‑loop rollouts into **closed‑
 ---
 
 ## Code Map
-- `verl/workers/rollout/vllm_rollout_spmd.py`  
+- [`verl/workers/rollout/vllm_rollout_spmd.py`](verl/workers/rollout/vllm_rollout_spmd.py)  
   Multi‑turn guided rollout (policy ↔ verifier) core implementation.
-- `verl/workers/rollout/config.py`  
+- [`verl/workers/rollout/config.py`](verl/workers/rollout/config.py)  
   Verifier configuration and default verifier prompt template.
-- `verl/workers/reward/function.py`  
+- [`verl/workers/reward/function.py`](verl/workers/reward/function.py)  
   Injects `verifier_hallucination_score` into reward inputs (optional).
-- `verl/trainer/*`  
+- [`verl/trainer/`](verl/trainer/)  
   Trainer, configs, and Ray orchestration.
-- `examples/`  
+- [`examples/`](examples/)  
   Ready‑to‑run configs and scripts.
-- `examples/reward_function/*`  
+- [`examples/reward_function/`](examples/reward_function/)  
   Reward function examples.
 
 ---
 
 ## Installation
+Clone and enter the repo:
+
+```bash
+git clone https://github.com/tongruiliu/Guided-GRPO.git
+cd Guided-GRPO
+```
+
 **Python >= 3.9** is required.
 
 ```bash
