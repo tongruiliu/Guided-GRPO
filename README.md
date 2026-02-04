@@ -5,26 +5,23 @@ This repository contains Guided‑GRPO, a framework that injects **process‑lev
 
 ---
 
-## Table of Contents
-- [Method Overview](#method-overview)
-- [Code Map](#code-map)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Data Format](#data-format)
-- [Reward Functions](#reward-functions)
-- [Logging & Checkpoints](#logging--checkpoints)
-- [Limitations](#limitations)
-- [Citation](#citation)
-- [License](#license)
-
----
-
 ## Method Overview
 Guided‑GRPO is an RL paradigm that turns open‑loop rollouts into **closed‑loop** reasoning:
 1. **Verifier‑guided rollout**: a lightweight verifier interacts with the policy at each step, correcting errors and providing minimal guidance.
 2. **Process‑level signals**: step‑wise feedback turns sparse outcome rewards into denser training signals.
 3. **GRPO update**: group‑based advantage estimation updates the policy without a separate value network.
+
+---
+
+## Features
+- Supported models: Qwen2/Qwen2.5/Qwen3 (text), Qwen2‑VL/Qwen2.5‑VL/Qwen3‑VL
+- Supported algorithms: Guided‑GRPO, GRPO, DAPO, GSPO, CISPO, Reinforce
+- Supported datasets: any dataset that follows the [Data Format](#data-format)
+
+---
+
+## Resources
+- Guided Verifier (8B): [ruitongl/Guided-Verifier-8B](https://huggingface.co/ruitongl/Guided-Verifier-8B)
 
 ---
 
@@ -37,6 +34,8 @@ Guided‑GRPO is an RL paradigm that turns open‑loop rollouts into **closed‑
   Injects `verifier_hallucination_score` into reward inputs (optional).
 - [`verl/trainer/`](verl/trainer/)  
   Trainer, configs, and Ray orchestration.
+- [`verl/trainer/main.py`](verl/trainer/main.py)  
+  Training entrypoint.
 - [`examples/`](examples/)  
   Ready‑to‑run configs and scripts.
 - [`examples/reward_function/`](examples/reward_function/)  
@@ -52,13 +51,20 @@ git clone https://github.com/tongruiliu/Guided-GRPO.git
 cd Guided-GRPO
 ```
 
-**Python >= 3.9** is required.
-
 ```bash
 pip install -r requirements.txt
 ```
 
 (Optional) Docker environments are provided via `Dockerfile` and `Dockerfile.legacy`.
+
+---
+
+## Requirements
+- Python >= 3.9
+- Ray (training orchestration)
+- vLLM (rollout backend)
+- CUDA‑capable GPU recommended
+- FSDP optional (config‑controlled)
 
 ---
 
