@@ -6,7 +6,6 @@ This repository contains Guided‑GRPO, a framework that injects **process‑lev
 ---
 
 ## Table of Contents
-- [Key Ideas](#key-ideas)
 - [Method Overview](#method-overview)
 - [Code Map](#code-map)
 - [Installation](#installation)
@@ -20,14 +19,6 @@ This repository contains Guided‑GRPO, a framework that injects **process‑lev
 - [Roadmap](#roadmap)
 - [Citation](#citation)
 - [License](#license)
-
----
-
-## Key Ideas
-- **Guided Verifier**: a lightweight verifier monitors and corrects the policy during rollout, turning open‑loop exploration into guided navigation.
-- **Process‑level feedback**: step‑wise guidance reduces cascading errors from early reasoning mistakes.
-- **Guided‑GRPO**: integrates verifier feedback into GRPO without a separate value network.
-- **Flexible verifier backends**: use a local verifier model or an OpenAI‑style HTTP service.
 
 ---
 
@@ -67,7 +58,8 @@ pip install -r requirements.txt
 ---
 
 ## Quick Start
-Run standard GRPO training (no verifier):
+### A) GRPO (no verifier)
+Run standard GRPO training:
 
 ```bash
 python3 -m verl.trainer.main \
@@ -76,25 +68,20 @@ python3 -m verl.trainer.main \
 
 Example script: `examples/qwen2_5_vl_7b_geo3k_grpo.sh`
 
----
-
-## Guided‑GRPO (Multi‑Turn Verifier)
+### B) Guided‑GRPO (multi‑turn verifier)
 Guided‑GRPO runs multi‑turn rollouts where the verifier interacts with the policy at each step.
 
-### A) Local Verifier
-Edit `examples/config_multi_turn.yaml`:
+Edit `examples/config_multi_turn.yaml` (local verifier):
 - `worker.rollout.verifier.enable: true`
 - `worker.rollout.verifier.model_path: /path/to/verifier`
 - optional `tokenizer_path`, `trust_remote_code`
 
 Run:
 ```bash
-python3 -m verl.trainer.main \
-  config=examples/config_multi_turn.yaml
+bash examples/run_guided_grpo_local_verifier.sh
 ```
 
-### B) HTTP Verifier (OpenAI‑style)
-Edit `examples/config_multi_turn_http.yaml`:
+Edit `examples/config_multi_turn_http.yaml` (HTTP verifier):
 - `worker.rollout.verifier.use_http: true`
 - `worker.rollout.verifier.base_url: http(s)://...`
 - `worker.rollout.verifier.model: <model_name>`
@@ -102,7 +89,7 @@ Edit `examples/config_multi_turn_http.yaml`:
 
 Run:
 ```bash
-bash examples/debug_http_verifier_httpcfg_local8.sh
+bash examples/run_guided_grpo_http_verifier.sh
 ```
 
 > The client sends requests to `POST {base_url}/chat/completions` with an OpenAI‑style payload.
@@ -157,21 +144,8 @@ Checkpoints are saved to `trainer.save_checkpoint_path` (default: `checkpoints/<
 
 ---
 
-## Roadmap
-- [ ] Additional benchmarks & scripts
-- [ ] More verifier backends and deployment examples
-- [ ] Improved logging and evaluation utilities
-
----
-
 ## Citation
-If you use this code, please cite the paper draft:
-```
-@misc{guided_grpo,
-  title={Guided-GRPO: Guided Reinforcement Learning for Multimodal Reasoning},
-  note={Manuscript in preparation},
-}
-```
+TBD
 
 ---
 
