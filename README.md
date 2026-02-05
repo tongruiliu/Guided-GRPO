@@ -11,6 +11,12 @@ Guided‑GRPO is an RL paradigm that turns open‑loop rollouts into **closed‑
 2. **Process‑level signals**: step‑wise feedback turns sparse outcome rewards into denser training signals.
 3. **GRPO update**: group‑based advantage estimation updates the policy without a separate value network.
 
+To provide context for the RL stage, the full framework includes:
+- **Stage 1 (data synthesis)**: generate multi‑turn solver/verifier trajectories with step‑level hallucination annotations, then filter for quality.
+- **Stage 2 (verifier SFT)**: fine‑tune a lightweight verifier to produce minimal corrections and `[SCORE]` signals.
+
+![Guided‑GRPO Framework](assets/framework.png)
+
 ---
 
 ## Features
