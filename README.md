@@ -28,6 +28,7 @@ To provide context for the RL stage, the full framework includes:
 
 ## Resources
 - Guided Verifier (8B): [ruitongl/Guided-Verifier-8B](https://huggingface.co/ruitongl/Guided-Verifier-8B)
+- Guided-GRPO (Code): [tongruiliu/Guided-GRPO](https://github.com/tongruiliu/Guided-GRPO)
 
 ---
 
