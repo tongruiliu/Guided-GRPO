@@ -5,7 +5,7 @@ This repository contains Guided‑GRPO, a framework that injects **process‑lev
 
 ---
 
-## Method Overview
+## <img src="assets/icons/icon-overview.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Method Overview
 Guided‑GRPO is an RL paradigm that turns open‑loop rollouts into **closed‑loop** reasoning:
 1. **Verifier‑guided rollout**: a lightweight verifier interacts with the policy at each step, correcting errors and providing minimal guidance.
 2. **Process‑level signals**: step‑wise feedback turns sparse outcome rewards into denser training signals.
@@ -19,20 +19,20 @@ To provide context for the RL stage, the full framework includes:
 
 ---
 
-## Features
+## <img src="assets/icons/icon-features.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Features
 - Supported models: Qwen2/Qwen2.5/Qwen3 (text), Qwen2‑VL/Qwen2.5‑VL/Qwen3‑VL
 - Supported algorithms: Guided‑GRPO, GRPO, DAPO, GSPO, CISPO, Reinforce
 - Supported datasets: any dataset that follows the [Data Format](#data-format)
 
 ---
 
-## Resources
+## <img src="assets/icons/icon-resources.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Resources
 - Guided Verifier (8B): [ruitongl/Guided-Verifier-8B](https://huggingface.co/ruitongl/Guided-Verifier-8B)
-- Guided-GRPO (Code): [tongruiliu/Guided-GRPO](https://github.com/tongruiliu/Guided-GRPO)
+- Paper: [arxiv](https://arxiv.org/pdf/2602.04290)
 
 ---
 
-## Code Map
+## <img src="assets/icons/icon-code.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Code Map
 - [`verl/workers/rollout/vllm_rollout_spmd.py`](verl/workers/rollout/vllm_rollout_spmd.py)  
   Multi‑turn guided rollout (policy ↔ verifier) core implementation.
 - [`verl/workers/rollout/config.py`](verl/workers/rollout/config.py)  
@@ -50,7 +50,7 @@ To provide context for the RL stage, the full framework includes:
 
 ---
 
-## Installation
+## <img src="assets/icons/icon-install.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Installation
 Clone and enter the repo:
 
 ```bash
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 ---
 
-## Requirements
+## <img src="assets/icons/icon-requirements.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Requirements
 - Python >= 3.9
 - Ray (training orchestration)
 - vLLM (rollout backend)
@@ -75,8 +75,8 @@ pip install -r requirements.txt
 
 ---
 
-## Quick Start
-### A) GRPO (no verifier)
+## <img src="assets/icons/icon-quickstart.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Quick Start
+### <img src="assets/icons/icon-quickstart.svg" width="14" height="14" style="vertical-align: -2px; margin-right: 6px;" /> A) GRPO (no verifier)
 Run standard GRPO training:
 
 ```bash
@@ -86,7 +86,7 @@ python3 -m verl.trainer.main \
 
 Example script: `examples/qwen2_5_vl_7b_geo3k_grpo.sh`
 
-### B) Guided‑GRPO (multi‑turn verifier)
+### <img src="assets/icons/icon-quickstart.svg" width="14" height="14" style="vertical-align: -2px; margin-right: 6px;" /> B) Guided‑GRPO (multi‑turn verifier)
 Guided‑GRPO runs multi‑turn rollouts where the verifier interacts with the policy at each step.
 
 Edit `examples/config_multi_turn.yaml` (local verifier):
@@ -114,7 +114,7 @@ bash examples/run_guided_grpo_http_verifier.sh
 
 ---
 
-## Configuration
+## <img src="assets/icons/icon-config.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Configuration
 Key fields (YAML):
 - `data.max_prompt_length`, `data.max_response_length`
 - `worker.rollout.n`, `worker.rollout.max_model_len`, `worker.rollout.max_num_batched_tokens`
@@ -128,7 +128,7 @@ worker.rollout.max_num_batched_tokens >= data.max_prompt_length + data.max_respo
 
 ---
 
-## Data Format
+## <img src="assets/icons/icon-data.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Data Format
 Each sample should provide:
 - `prompt_key` (default: `problem`)
 - `answer_key` (default: `answer`)
@@ -138,7 +138,7 @@ For images, include `<image>` placeholders in the prompt text (one per image). T
 
 ---
 
-## Reward Functions
+## <img src="assets/icons/icon-reward.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Reward Functions
 Reward functions live in `examples/reward_function/*.py`.
 
 If `worker.rollout.verifier.enable_hallucination_score=true`, the verifier can append:
@@ -149,23 +149,23 @@ These are averaged into `verifier_hallucination_score` and passed to reward func
 
 ---
 
-## Logging & Checkpoints
+## <img src="assets/icons/icon-logging.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Logging & Checkpoints
 Logging backends (configurable): `file`, `tensorboard`, `wandb`, `console`.  
 Checkpoints are saved to `trainer.save_checkpoint_path` (default: `checkpoints/<project>/<experiment>`).
 
 ---
 
-## Limitations
+## <img src="assets/icons/icon-limitations.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Limitations
 - The verifier prompt template is task‑specific and should be tuned per domain.
 - Multi‑turn rollouts add latency; plan GPU budgets accordingly.
 - Verifier quality matters; weak verifiers can reduce training gains.
 
 ---
 
-## Citation
+## <img src="assets/icons/icon-citation.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> Citation
 TBD
 
 ---
 
-## License
+## <img src="assets/icons/icon-license.svg" width="16" height="16" style="vertical-align: -3px; margin-right: 6px;" /> License
 Apache 2.0 (see `LICENSE`).
