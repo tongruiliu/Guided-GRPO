@@ -163,7 +163,21 @@ Checkpoints are saved to `trainer.save_checkpoint_path` (default: `checkpoints/<
 ---
 
 ## <img src="assets/icons/icon-citation.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Citation
-TBD
+If you find this project useful for your research, please consider citing the following paper:
+
+```bibtex
+@misc{sun2026guidedverifier,
+  title         = {Guided Verifier: Collaborative Multimodal Reasoning via Dynamic Process Supervision},
+  author        = {Sun, Lingzhuang and Liu, Ruitong and Zhu, Yuxia and Xu, Xiaohan and Wei, Jingxuan and Zhang, Xiangxiang and Yu, Bihui and Zhang, Wentao},
+  year          = {2026},
+  month         = feb,
+  eprint        = {2602.04290},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CL},
+  doi           = {10.48550/arXiv.2602.04290},
+  url           = {https://arxiv.org/abs/2602.04290}
+}
+```
 
 ---
 
