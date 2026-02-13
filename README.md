@@ -5,7 +5,7 @@ This repository contains Guided‑GRPO, a framework that injects **process‑lev
 
 ---
 
-## <img src="assets/icons/icon-overview.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Method Overview
+## 🧭 Method Overview
 Guided‑GRPO is an RL paradigm that turns open‑loop rollouts into **closed‑loop** reasoning:
 1. **Verifier‑guided rollout**: a lightweight verifier interacts with the policy at each step, correcting errors and providing minimal guidance.
 2. **Process‑level signals**: step‑wise feedback turns sparse outcome rewards into denser training signals.
@@ -19,20 +19,20 @@ To provide context for the RL stage, the full framework includes:
 
 ---
 
-## <img src="assets/icons/icon-features.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Features
+## 🛠️ Features
 - Supported models: Qwen2/Qwen2.5/Qwen3 (text), Qwen2‑VL/Qwen2.5‑VL/Qwen3‑VL
 - Supported algorithms: Guided‑GRPO, GRPO, DAPO, GSPO, CISPO, Reinforce
 - Supported datasets: any dataset that follows the [Data Format](#data-format)
 
 ---
 
-## <img src="assets/icons/icon-resources.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Resources
+## 📚 Resources
 - Guided Verifier (8B): [ruitongl/Guided-Verifier-8B](https://huggingface.co/ruitongl/Guided-Verifier-8B)
 - Paper: [arxiv](https://arxiv.org/pdf/2602.04290)
 
 ---
 
-## <img src="assets/icons/icon-code.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Code Map
+## 📂 Code Map
 - [`verl/workers/rollout/vllm_rollout_spmd.py`](verl/workers/rollout/vllm_rollout_spmd.py)  
   Multi‑turn guided rollout (policy ↔ verifier) core implementation.
 - [`verl/workers/rollout/config.py`](verl/workers/rollout/config.py)  
@@ -50,7 +50,7 @@ To provide context for the RL stage, the full framework includes:
 
 ---
 
-## <img src="assets/icons/icon-install.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Installation
+## 📦 Installation
 Clone and enter the repo:
 
 ```bash
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 
 ---
 
-## <img src="assets/icons/icon-requirements.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Requirements
+## ⚙️ Requirements
 - Python >= 3.9
 - Ray (training orchestration)
 - vLLM (rollout backend)
@@ -75,8 +75,8 @@ pip install -r requirements.txt
 
 ---
 
-## <img src="assets/icons/icon-quickstart.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Quick Start
-### <img src="assets/icons/icon-quickstart.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> A) GRPO (no verifier)
+## 🚀 Quick Start
+### 🔹 A) GRPO (no verifier)
 Run standard GRPO training:
 
 ```bash
@@ -86,7 +86,7 @@ python3 -m verl.trainer.main \
 
 Example script: `examples/qwen2_5_vl_7b_geo3k_grpo.sh`
 
-### <img src="assets/icons/icon-quickstart.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> B) Guided‑GRPO (multi‑turn verifier)
+### 🔹 B) Guided‑GRPO (multi‑turn verifier)
 Guided‑GRPO runs multi‑turn rollouts where the verifier interacts with the policy at each step.
 
 Edit `examples/config_multi_turn.yaml` (local verifier):
@@ -114,7 +114,7 @@ bash examples/run_guided_grpo_http_verifier.sh
 
 ---
 
-## <img src="assets/icons/icon-resources.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Experimental Results
+## 📊 Experimental Results
 We evaluate Guided‑GRPO against representative baselines on multimodal reasoning benchmarks.
 Gray indicates base model performance, and blue highlights Guided‑GRPO.
 
@@ -138,7 +138,7 @@ Representative reasoning cases:
 
 ---
 
-## <img src="assets/icons/icon-config.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Configuration
+## 🧩 Configuration
 Key fields (YAML):
 - `data.max_prompt_length`, `data.max_response_length`
 - `worker.rollout.n`, `worker.rollout.max_model_len`, `worker.rollout.max_num_batched_tokens`
@@ -152,7 +152,7 @@ worker.rollout.max_num_batched_tokens >= data.max_prompt_length + data.max_respo
 
 ---
 
-## <img src="assets/icons/icon-data.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Data Format
+## 🗂️ Data Format
 Each sample should provide:
 - `prompt_key` (default: `problem`)
 - `answer_key` (default: `answer`)
@@ -162,7 +162,7 @@ For images, include `<image>` placeholders in the prompt text (one per image). T
 
 ---
 
-## <img src="assets/icons/icon-reward.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Reward Functions
+## 🎯 Reward Functions
 Reward functions live in `examples/reward_function/*.py`.
 
 If `worker.rollout.verifier.enable_hallucination_score=true`, the verifier can append:
@@ -173,7 +173,7 @@ These are averaged into `verifier_hallucination_score` and passed to reward func
 
 ---
 
-## <img src="assets/icons/icon-logging.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Logging & Checkpoints
+## 📈 Logging & Checkpoints
 Logging backends (configurable): `file`, `tensorboard`, `wandb`, `console`.  
 Checkpoints are saved to `trainer.save_checkpoint_path` (default: `checkpoints/<project>/<experiment>`).
 
@@ -184,14 +184,14 @@ Training process curve:
 
 ---
 
-## <img src="assets/icons/icon-limitations.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Limitations
+## ⚠️ Limitations
 - The verifier prompt template is task‑specific and should be tuned per domain.
 - Multi‑turn rollouts add latency; plan GPU budgets accordingly.
 - Verifier quality matters; weak verifiers can reduce training gains.
 
 ---
 
-## <img src="assets/icons/icon-citation.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Citation
+## 📖 Citation
 If you find this project useful for your research, please consider citing the following paper:
 
 ```bibtex
@@ -210,5 +210,5 @@ If you find this project useful for your research, please consider citing the fo
 
 ---
 
-## <img src="assets/icons/icon-license.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> License
+## 📄 License
 Apache 2.0 (see `LICENSE`).
