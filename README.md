@@ -147,27 +147,6 @@ worker.rollout.max_num_batched_tokens >= data.max_prompt_length + data.max_respo
 
 ---
 
-## 🗂️ Data Format
-Each sample should provide:
-- `prompt_key` (default: `problem`)
-- `answer_key` (default: `answer`)
-- optional `images` / `videos`
-
-For images, include `<image>` placeholders in the prompt text (one per image). The loader will attempt to auto‑insert if missing.
-
----
-
-## 🎯 Reward Functions
-Reward functions live in `examples/reward_function/*.py`.
-
-If `worker.rollout.verifier.enable_hallucination_score=true`, the verifier can append:
-```
-[SCORE] hallucination_detect=0|1
-```
-These are averaged into `verifier_hallucination_score` and passed to reward functions.
-
----
-
 ## 📈 Logging & Checkpoints
 Logging backends (configurable): `file`, `tensorboard`, `wandb`, `console`.  
 Checkpoints are saved to `trainer.save_checkpoint_path` (default: `checkpoints/<project>/<experiment>`).
