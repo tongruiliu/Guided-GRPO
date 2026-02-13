@@ -115,7 +115,7 @@ bash examples/run_guided_grpo_http_verifier.sh
 ---
 
 ## 📊 Experimental Results
-Guided‑GRPO (`Geometry-3k` + verifier SFT on `CoRe`) is evaluated on MathVista (`test-mini`), MathVerse (`test-mini`), and MMMU (`Validation`).
+Results are reported on MathVista (`test-mini`), MathVerse (`test-mini`), and MMMU (`Validation`).
 
 `Table 1` shows the main benchmark gains over the base Qwen3‑VL‑8B model.
 ![Main Results Table](assets/table1.png)
@@ -140,30 +140,6 @@ Key fields (YAML):
 - `worker.rollout.verifier.*` (enable, model_path / use_http, max_turns, prompt_template, etc.)
 - `trainer.project_name`, `trainer.experiment_name`
 
-### Paper Hyperparameters (MM_RL.pdf)
-Stage 2: Guided Verifier SFT
-- Base model: `Qwen3-VL-8B-Instruct`
-- Precision: `bf16` (vision tower frozen)
-- Optimizer: `AdamW`, LR `1e-5`, scheduler `cosine`, warmup ratio `0.1`
-- Epochs: `3`, per-device batch size `1`, gradient accumulation `2`
-- Max sequence length: `28699`
-- DeepSpeed: `ZeRO-3`
-
-Stage 3: Guided-GRPO (RL)
-- Global batch size: `128`
-- LR: `2e-6`, scheduler `constant`
-- KL coefficient `β`: `0.01` (low-variance KL)
-- Epochs: `15`, weight decay `1e-2`
-- Group size `G`: `8`, policy temperature `1.0`
-- Policy max length: `27000`
-- Verifier max turns: `10`, verifier temperature `0.0`
-- Reward weights: `λ_acc=0.8`, `λ_ver=0.1`, `λ_fmt=0.1`
-
-### Paper Hardware Setup (MM_RL.pdf)
-- Cluster: `20 x NVIDIA H20 (96GB)`
-- RL training: `16 GPUs` (policy rollout + gradient updates)
-- Verifier inference service: `4 GPUs` (frozen guided verifier API)
-
 **Important**: ensure
 ```
 worker.rollout.max_num_batched_tokens >= data.max_prompt_length + data.max_response_length
@@ -178,13 +154,6 @@ Each sample should provide:
 - optional `images` / `videos`
 
 For images, include `<image>` placeholders in the prompt text (one per image). The loader will attempt to auto‑insert if missing.
-
-### CoRe Dataset Snapshot (for Verifier SFT)
-- Dialog trajectories: `2792` (each trajectory paired with one unique PNG image from `MM_Math`)
-- Total messages: `61084` (`2792` system / `29146` user / `29146` assistant)
-- Step-wise supervision signals: `26360` total.
-- Positive (`Score 1`): `24946`.
-- Negative (`Score 0`): `1406`.
 
 ---
 
