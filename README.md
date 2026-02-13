@@ -115,26 +115,21 @@ bash examples/run_guided_grpo_http_verifier.sh
 ---
 
 ## 📊 Experimental Results
-We evaluate Guided‑GRPO against representative baselines on multimodal reasoning benchmarks.
-Gray indicates base model performance, and blue highlights Guided‑GRPO.
+Guided‑GRPO (`Geometry-3k` + verifier SFT on `CoRe`) is evaluated on MathVista (`test-mini`), MathVerse (`test-mini`), and MMMU (`Validation`).
 
-### 1. Main Results
-Accuracy (%) comparisons across MathVerse, MathVista, and MMMU:
-
+`Table 1` shows the main benchmark gains over the base Qwen3‑VL‑8B model.
 ![Main Results Table](assets/table1.png)
 
-### 2. Additional Results
-Additional benchmark comparisons:
-
+`Table 2-4` show consistent improvements across scaling, verifier choices, and extended settings.
 ![Additional Results Table 2](assets/table2.png)
 ![Additional Results Table 3](assets/table3.png)
 ![Additional Results Table 4](assets/table4.png)
 
-### 3. Qualitative Examples
-Representative reasoning cases:
+`Figure 3/4` shows fewer interaction turns and lower token consumption.
+![Inference Efficiency (Turns and Tokens)](assets/f1.png)
 
-![Qualitative Example 1](assets/f1.png)
-![Qualitative Example 2](assets/f2.png)
+`Figure 8/9` shows a better performance-efficiency trade-off and cleaner latent structure after SFT.
+![Trade-off and Latent Visualization](assets/f2.png)
 
 ---
 
@@ -144,6 +139,30 @@ Key fields (YAML):
 - `worker.rollout.n`, `worker.rollout.max_model_len`, `worker.rollout.max_num_batched_tokens`
 - `worker.rollout.verifier.*` (enable, model_path / use_http, max_turns, prompt_template, etc.)
 - `trainer.project_name`, `trainer.experiment_name`
+
+### Paper Hyperparameters (MM_RL.pdf)
+Stage 2: Guided Verifier SFT
+- Base model: `Qwen3-VL-8B-Instruct`
+- Precision: `bf16` (vision tower frozen)
+- Optimizer: `AdamW`, LR `1e-5`, scheduler `cosine`, warmup ratio `0.1`
+- Epochs: `3`, per-device batch size `1`, gradient accumulation `2`
+- Max sequence length: `28699`
+- DeepSpeed: `ZeRO-3`
+
+Stage 3: Guided-GRPO (RL)
+- Global batch size: `128`
+- LR: `2e-6`, scheduler `constant`
+- KL coefficient `β`: `0.01` (low-variance KL)
+- Epochs: `15`, weight decay `1e-2`
+- Group size `G`: `8`, policy temperature `1.0`
+- Policy max length: `27000`
+- Verifier max turns: `10`, verifier temperature `0.0`
+- Reward weights: `λ_acc=0.8`, `λ_ver=0.1`, `λ_fmt=0.1`
+
+### Paper Hardware Setup (MM_RL.pdf)
+- Cluster: `20 x NVIDIA H20 (96GB)`
+- RL training: `16 GPUs` (policy rollout + gradient updates)
+- Verifier inference service: `4 GPUs` (frozen guided verifier API)
 
 **Important**: ensure
 ```
@@ -159,6 +178,13 @@ Each sample should provide:
 - optional `images` / `videos`
 
 For images, include `<image>` placeholders in the prompt text (one per image). The loader will attempt to auto‑insert if missing.
+
+### CoRe Dataset Snapshot (for Verifier SFT)
+- Dialog trajectories: `2792` (each trajectory paired with one unique PNG image from `MM_Math`)
+- Total messages: `61084` (`2792` system / `29146` user / `29146` assistant)
+- Step-wise supervision signals: `26360` total.
+- Positive (`Score 1`): `24946`.
+- Negative (`Score 0`): `1406`.
 
 ---
 
@@ -178,7 +204,7 @@ Logging backends (configurable): `file`, `tensorboard`, `wandb`, `console`.
 Checkpoints are saved to `trainer.save_checkpoint_path` (default: `checkpoints/<project>/<experiment>`).
 
 ### Training Dynamics
-Training process curve:
+`Figure 5` shows RL with the SFT verifier is more stable and more token-efficient than RL with a non-SFT verifier.
 
 ![Training Dynamics](assets/f3.png)
 
