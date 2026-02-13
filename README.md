@@ -114,6 +114,30 @@ bash examples/run_guided_grpo_http_verifier.sh
 
 ---
 
+## <img src="assets/icons/icon-resources.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Experimental Results
+We evaluate Guided‑GRPO against representative baselines on multimodal reasoning benchmarks.
+Gray indicates base model performance, and blue highlights Guided‑GRPO.
+
+### 1. Main Results
+Accuracy (%) comparisons across MathVerse, MathVista, and MMMU:
+
+![Main Results Table](assets/table1.png)
+
+### 2. Additional Results
+Additional benchmark comparisons:
+
+![Additional Results Table 2](assets/table2.png)
+![Additional Results Table 3](assets/table3.png)
+![Additional Results Table 4](assets/table4.png)
+
+### 3. Qualitative Examples
+Representative reasoning cases:
+
+![Qualitative Example 1](assets/f1.png)
+![Qualitative Example 2](assets/f2.png)
+
+---
+
 ## <img src="assets/icons/icon-config.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Configuration
 Key fields (YAML):
 - `data.max_prompt_length`, `data.max_response_length`
@@ -152,6 +176,11 @@ These are averaged into `verifier_hallucination_score` and passed to reward func
 ## <img src="assets/icons/icon-logging.svg" style="width: 1em; height: 1em; vertical-align: -0.12em; margin-right: 6px;" /> Logging & Checkpoints
 Logging backends (configurable): `file`, `tensorboard`, `wandb`, `console`.  
 Checkpoints are saved to `trainer.save_checkpoint_path` (default: `checkpoints/<project>/<experiment>`).
+
+### Training Dynamics
+Training process curve:
+
+![Training Dynamics](assets/f3.png)
 
 ---
 
