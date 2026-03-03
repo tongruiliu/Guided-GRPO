@@ -21,4 +21,4 @@ style:
 	ruff format $(check_dirs)
 
 test:
-	pytest -vv tests/
+	PYTHONPATH=$(CURDIR):$$PYTHONPATH pytest -vv tests/

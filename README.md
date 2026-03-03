@@ -60,6 +60,7 @@ cd Guided-GRPO
 
 ```bash
 pip install -r requirements.txt
+pip install -e .
 ```
 
 (Optional) Docker environments are provided via `Dockerfile` and `Dockerfile.legacy`.
