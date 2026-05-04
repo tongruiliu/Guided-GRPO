@@ -53,7 +53,7 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = False) -> dict[str
     returns = batch.batch["returns"]
 
     max_response_length = batch.batch["responses"].size(-1)
-    response_mask = batch.batch["attention_mask"][:, -max_response_length:].bool()
+    response_mask = batch.batch["response_mask"].bool()
 
     valid_adv = torch.masked_select(advantages, response_mask)
     valid_returns = torch.masked_select(returns, response_mask)

@@ -77,6 +77,18 @@ class FunctionRewardManager(ABC):
         ...
 
 
+def _response_attention_mask(data: DataProto) -> torch.Tensor:
+    response_length = data.batch["responses"].size(-1)
+    return data.batch["attention_mask"][:, -response_length:]
+
+
+def _last_trainable_response_index(response_mask: torch.Tensor, fallback_length: int) -> int:
+    trainable_indices = torch.nonzero(response_mask, as_tuple=False).flatten()
+    if trainable_indices.numel() > 0:
+        return int(trainable_indices[-1].item())
+    return max(0, fallback_length - 1)
+
+
 class SequentialFunctionRewardManager(FunctionRewardManager):
     reward_fn: SequentialRewardFunction
 
@@ -84,9 +96,10 @@ class SequentialFunctionRewardManager(FunctionRewardManager):
         reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
         reward_metrics = defaultdict(list)
         response_ids = data.batch["responses"]
-        response_length = torch.sum(data.batch["response_mask"], dim=-1)
+        response_attention_mask = _response_attention_mask(data)
+        response_length = torch.sum(response_attention_mask, dim=-1)
         for i in range(len(data)):
-            cur_response_length = int(response_length[i].item())  # avoid tensor indexing error
+            cur_response_length = int(response_length[i].item())
             valid_response_ids = response_ids[i][:cur_response_length]
             response_str = self.tokenizer.decode(
                 valid_response_ids, skip_special_tokens=self.config.skip_special_tokens
@@ -102,7 +115,8 @@ class SequentialFunctionRewardManager(FunctionRewardManager):
                 )
 
             score = self.reward_fn(reward_input)
-            reward_tensor[i, cur_response_length - 1] = score["overall"]
+            reward_index = _last_trainable_response_index(data.batch["response_mask"][i], cur_response_length)
+            reward_tensor[i, reward_index] = score["overall"]
             for key, value in score.items():
                 reward_metrics[key].append(value)
 
@@ -115,9 +129,10 @@ class BatchFunctionRewardManager(FunctionRewardManager):
     def compute_reward(self, data: DataProto) -> Tuple[torch.Tensor, dict[str, list[float]]]:
         reward_inputs = []
         response_ids = data.batch["responses"]
-        response_length = torch.sum(data.batch["response_mask"], dim=-1)
+        response_attention_mask = _response_attention_mask(data)
+        response_length = torch.sum(response_attention_mask, dim=-1)
         for i in range(len(data)):
-            cur_response_length = int(response_length[i].item())  # avoid tensor indexing error
+            cur_response_length = int(response_length[i].item())
             valid_response_ids = response_ids[i][:cur_response_length]
             response_str = self.tokenizer.decode(
                 valid_response_ids, skip_special_tokens=self.config.skip_special_tokens
@@ -138,8 +153,9 @@ class BatchFunctionRewardManager(FunctionRewardManager):
         reward_tensor = torch.zeros_like(data.batch["responses"], dtype=torch.float32)
         reward_metrics = defaultdict(list)
         for i, score in enumerate(scores):
-            cur_response_length = int(response_length[i].item())  # avoid tensor indexing error
-            reward_tensor[i, cur_response_length - 1] = score["overall"]
+            cur_response_length = int(response_length[i].item())
+            reward_index = _last_trainable_response_index(data.batch["response_mask"][i], cur_response_length)
+            reward_tensor[i, reward_index] = score["overall"]
             for key, value in score.items():
                 reward_metrics[key].append(value)
 

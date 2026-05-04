@@ -79,6 +79,7 @@ worker:
       n: 1
     verifier:
       enable:
+      train_scope: final_turn  # {final_turn, full_turn}
       model_path:  # TODO: set to your real verifier model path
       tokenizer_path: null  # 留空时默认共用 model_path
       trust_remote_code: true

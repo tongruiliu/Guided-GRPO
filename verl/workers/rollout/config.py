@@ -60,6 +60,7 @@ Your task is to facilitate the student's independent problem-solving process by 
 @dataclass
 class VerifierConfig:
     enable: bool = False
+    train_scope: str = "final_turn"
     model_path: str = ""
     tokenizer_path: Optional[str] = None
     trust_remote_code: bool = False

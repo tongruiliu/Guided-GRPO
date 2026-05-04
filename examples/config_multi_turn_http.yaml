@@ -81,6 +81,7 @@ worker:
       n: 1
     verifier:
       enable: true  # true
+      train_scope: final_turn  # {final_turn, full_turn}
       use_http: true # true
       base_url: # This is the reasoning service API
       model: ve

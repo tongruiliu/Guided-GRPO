@@ -189,6 +189,9 @@ class vLLMRollout(BaseRollout):
         self.verifier_http_concurrency = 1
         self.verifier_prompt_template = config.verifier.prompt_template.strip()
         self.verifier_stop_token = config.verifier.stop_token.strip()
+        self.verifier_train_scope = getattr(config.verifier, "train_scope", "final_turn")
+        if self.verifier_train_scope not in {"final_turn", "full_turn"}:
+            raise ValueError("`worker.rollout.verifier.train_scope` must be `final_turn` or `full_turn`.")
         self.prompt_truncation = config.prompt_truncation
         self.multi_turn_samples = 1
         if self.use_multi_turn:
@@ -451,6 +454,9 @@ class vLLMRollout(BaseRollout):
                 "messages": convo_messages,
                 "last_prompt_tokens": None,
                 "last_assistant_tokens": None,
+                "trajectory_prompt_tokens": None,
+                "trajectory_response_tokens": [],
+                "trajectory_response_mask": [],
                 "multi_modal": mm_data,
                 "ground_truth": ground_truth,
                 "hallucination_score_sum": 0.0,
@@ -506,6 +512,8 @@ class vLLMRollout(BaseRollout):
                     else:
                         prompt_token_ids = self.tokenizer.encode(prompt_text, add_special_tokens=False)
                     state["last_prompt_tokens"] = prompt_token_ids
+                    if self.verifier_train_scope == "full_turn" and state["trajectory_prompt_tokens"] is None:
+                        state["trajectory_prompt_tokens"] = list(prompt_token_ids)
                     if state["multi_modal"] is not None:
                         vllm_input = {"prompt": prompt_text, "multi_modal_data": state["multi_modal"]}
                     else:
@@ -519,6 +527,9 @@ class vLLMRollout(BaseRollout):
                     output = completion.outputs[0]
                     response_tokens = output.token_ids
                     conversation_states[idx]["last_assistant_tokens"] = response_tokens
+                    if self.verifier_train_scope == "full_turn":
+                        conversation_states[idx]["trajectory_response_tokens"].extend(response_tokens)
+                        conversation_states[idx]["trajectory_response_mask"].extend([1] * len(response_tokens))
                     response_text = self.tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
                     conversation_states[idx]["messages"].append({"role": "assistant", "content": response_text})
                     conversation_states[idx]["last_assistant_has_final"] = self._has_final_answer(response_text)
@@ -553,9 +564,13 @@ class vLLMRollout(BaseRollout):
                             conversation_states[idx]["messages"].append(
                                 {"role": "user", "content": VERIFIER_CONTINUE_PROMPT}
                             )
+                            if self.verifier_train_scope == "full_turn":
+                                self._append_full_turn_transition(conversation_states[idx])
                             next_active_indices.append(idx)
                     else:
                         conversation_states[idx]["messages"].append({"role": "user", "content": verifier_text})
+                        if self.verifier_train_scope == "full_turn":
+                            self._append_full_turn_transition(conversation_states[idx])
                         next_active_indices.append(idx)
 
                 active_indices = next_active_indices
@@ -564,11 +579,25 @@ class vLLMRollout(BaseRollout):
 
         prompt_inputs, prompt_attention_masks, prompt_position_ids = [], [], []
         response_token_list = []
+        response_train_mask_list = []
+        response_attention_mask_list = []
         for state in conversation_states:
-            prompt_tokens = state.get("last_prompt_tokens")
-            response_tokens = state.get("last_assistant_tokens")
-            if prompt_tokens is None or response_tokens is None:
+            if self.verifier_train_scope == "full_turn":
+                prompt_tokens = state.get("trajectory_prompt_tokens")
+                response_tokens = state.get("trajectory_response_tokens")
+                response_train_mask = state.get("trajectory_response_mask")
+            else:
+                prompt_tokens = state.get("last_prompt_tokens")
+                response_tokens = state.get("last_assistant_tokens")
+                response_train_mask = None
+
+            if prompt_tokens is None or not response_tokens:
                 raise RuntimeError("Each sample must have at least one assistant response in multi-turn mode.")
+            response_tokens = list(response_tokens)[: self.config.response_length]
+            if response_train_mask is None:
+                response_train_mask = None
+            else:
+                response_train_mask = list(response_train_mask)[: self.config.response_length]
             prompt_tensor = torch.tensor(prompt_tokens, dtype=torch.long, device=device)
             attention_tensor = torch.ones_like(prompt_tensor, dtype=torch.long)
             position_tensor = torch.arange(len(prompt_tokens), dtype=torch.long, device=device)
@@ -585,6 +614,9 @@ class vLLMRollout(BaseRollout):
             prompt_attention_masks.append(attention_tensor)
             prompt_position_ids.append(position_tensor)
             response_token_list.append(response_tokens)
+            response_attention_mask_list.append([1] * len(response_tokens))
+            if response_train_mask is not None:
+                response_train_mask_list.append(response_train_mask)
 
         input_ids = torch.stack(prompt_inputs, dim=0)
         attention_mask = torch.stack(prompt_attention_masks, dim=0)
@@ -592,6 +624,9 @@ class vLLMRollout(BaseRollout):
         response_ids = VF.pad_2d_list_to_length(
             response_token_list, self.pad_token_id, max_length=self.config.response_length
         ).to(device)
+        response_attention_mask = VF.pad_2d_list_to_length(
+            response_attention_mask_list, 0, max_length=response_ids.size(1)
+        ).to(device=device, dtype=attention_mask.dtype)
 
         sequence_ids = torch.cat([input_ids, response_ids], dim=-1)
         response_length = response_ids.size(1)
@@ -603,10 +638,16 @@ class vLLMRollout(BaseRollout):
 
         response_position_ids = position_ids[..., -1:] + delta_position_id
         position_ids = torch.cat([position_ids, response_position_ids], dim=-1)
-        response_mask = VF.get_response_mask(
-            response_ids=response_ids, eos_token_id=meta_info["eos_token_id"], dtype=attention_mask.dtype
-        )
-        attention_mask = torch.cat((attention_mask, response_mask), dim=-1)
+        if self.verifier_train_scope == "full_turn":
+            response_mask = VF.pad_2d_list_to_length(
+                response_train_mask_list, 0, max_length=response_ids.size(1)
+            ).to(device=device, dtype=attention_mask.dtype)
+        else:
+            response_mask = VF.get_response_mask(
+                response_ids=response_ids, eos_token_id=meta_info["eos_token_id"], dtype=attention_mask.dtype
+            )
+            response_mask = response_mask * response_attention_mask
+        attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1)
 
         batch = TensorDict(
             {
@@ -739,6 +780,35 @@ class vLLMRollout(BaseRollout):
         else:
             return self.tokenizer.encode(prompt_text, add_special_tokens=False)
         return model_inputs["input_ids"][0].tolist()
+
+    def _append_full_turn_transition(self, state: dict[str, Any]) -> None:
+        prompt_tokens = state.get("last_prompt_tokens")
+        assistant_tokens = state.get("last_assistant_tokens")
+        if prompt_tokens is None or assistant_tokens is None:
+            return
+
+        prompt_text = self._render_prompt(state["messages"], state["multi_modal"])
+        if state["multi_modal"] is not None:
+            next_prompt_tokens = self._encode_prompt_with_mm(prompt_text, state["multi_modal"])
+        else:
+            next_prompt_tokens = self.tokenizer.encode(prompt_text, add_special_tokens=False)
+
+        previous_prefix = list(prompt_tokens) + list(assistant_tokens)
+        common_len = 0
+        for old_token, new_token in zip(previous_prefix, next_prompt_tokens):
+            if old_token != new_token:
+                break
+            common_len += 1
+
+        if common_len < len(prompt_tokens):
+            if self.rank == 0 and not getattr(self, "_full_turn_alignment_warned", False):
+                print("[full-turn-warn] next prompt no longer extends previous prompt; check prompt truncation.")
+                self._full_turn_alignment_warned = True
+            common_len = len(prompt_tokens)
+
+        transition_tokens = next_prompt_tokens[common_len:]
+        state["trajectory_response_tokens"].extend(transition_tokens)
+        state["trajectory_response_mask"].extend([0] * len(transition_tokens))
 
     def _flatten_message_content(self, content: Any) -> str:
         if isinstance(content, str):
