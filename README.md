@@ -38,7 +38,7 @@ To provide context for the RL stage, the full framework includes:
 - [`verl/workers/rollout/config.py`](verl/workers/rollout/config.py)  
   Verifier configuration and default verifier prompt template.
 - [`verl/workers/reward/function.py`](verl/workers/reward/function.py)  
-  Injects `verifier_hallucination_score` into reward inputs (optional).
+  Passes `verifier_hallucination_score` into reward inputs and supports sparse response masks.
 - [`verl/trainer/`](verl/trainer/)  
   Trainer, configs, and Ray orchestration.
 - [`verl/trainer/main.py`](verl/trainer/main.py)  
@@ -92,7 +92,7 @@ Guided‑GRPO runs multi‑turn rollouts where the verifier interacts with the p
 
 Edit `examples/config_multi_turn.yaml` (local verifier):
 - `worker.rollout.verifier.enable: true`
-- `worker.rollout.verifier.model_path: /path/to/verifier`
+- `worker.rollout.verifier.model_path: <verifier_model_or_local_dir>`
 - optional `tokenizer_path`, `trust_remote_code`
 
 Run:
@@ -112,6 +112,12 @@ bash examples/run_guided_grpo_http_verifier.sh
 ```
 
 > The client sends requests to `POST {base_url}/chat/completions` with an OpenAI‑style payload.
+
+#### Training Scope
+Guided‑GRPO supports two multi‑turn training scopes:
+
+- `worker.rollout.verifier.train_scope: final_turn`: default mode. The verifier guides intermediate turns, but PPO/GRPO trains only the final assistant answer. The prompt is the last conversation state before the final assistant response.
+- `worker.rollout.verifier.train_scope: full_turn`: trains all assistant turns in the generated trajectory. The response contains the full multi‑turn continuation, but only assistant-generated tokens are enabled in `response_mask`; verifier/user feedback tokens stay in the attention context and are masked out of actor loss, KL, advantage, and reward placement.
 
 ---
 
@@ -138,7 +144,8 @@ Results are reported on MathVista (`test-mini`), MathVerse (`test-mini`), and MM
 Key fields (YAML):
 - `data.max_prompt_length`, `data.max_response_length`
 - `worker.rollout.n`, `worker.rollout.max_model_len`, `worker.rollout.max_num_batched_tokens`
-- `worker.rollout.verifier.*` (enable, model_path / use_http, max_turns, prompt_template, etc.)
+- `worker.rollout.verifier.*` (enable, train_scope, model_path, use_http, max_turns, prompt_template, etc.)
+- `worker.reward.reward_function_kwargs.hallucination_weight` (optional, when verifier hallucination scoring is enabled)
 - `trainer.project_name`, `trainer.experiment_name`
 
 **Important**: ensure
