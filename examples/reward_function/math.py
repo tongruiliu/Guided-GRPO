@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import re
-from typing import Any
+from typing import Any, Optional
 
 from mathruler.grader import extract_boxed_content, grade_answer
 
@@ -39,9 +39,22 @@ def accuracy_reward(response: str, ground_truth: str) -> float:
     return 1.0 if grade_answer(answer, ground_truth) else 0.0
 
 
+def hallucination_reward(reward_input: dict[str, Any]) -> Optional[float]:
+    if "verifier_hallucination_score" not in reward_input:
+        return None
+
+    try:
+        score = float(reward_input["verifier_hallucination_score"])
+    except (TypeError, ValueError):
+        score = 0.5
+
+    return max(0.0, min(1.0, score))
+
+
 def compute_score(
     reward_inputs: list[dict[str, Any]],
     format_weight: float = 0.1,
+    hallucination_weight: float = 0.0,
 ) -> list[dict[str, float]]:
     if not isinstance(reward_inputs, list):
         raise ValueError("Please use `reward_type=batch` for math reward function.")
@@ -49,18 +62,40 @@ def compute_score(
     if not 0 <= format_weight <= 1:
         raise ValueError("`format_weight` must be within [0, 1].")
 
-    accuracy_weight = 1 - format_weight
+    if not 0 <= hallucination_weight <= 1:
+        raise ValueError("`hallucination_weight` must be within [0, 1].")
+
+    if format_weight + hallucination_weight > 1:
+        raise ValueError("`format_weight + hallucination_weight` must be <= 1.")
+
     scores = []
     for reward_input in reward_inputs:
         response = re.sub(r"\s*(<|>|/)\s*", r"\1", reward_input["response"])  # handle qwen2.5vl-32b format
         format_score = format_reward(response)
         accuracy_score = accuracy_reward(response, reward_input["ground_truth"])
-        scores.append(
-            {
-                "overall": (accuracy_weight * accuracy_score + format_weight * format_score),
+        hallucination_score = hallucination_reward(reward_input)
+
+        if hallucination_score is None:
+            overall = (1 - format_weight) * accuracy_score + format_weight * format_score
+            score = {
+                "overall": overall,
                 "format": format_score,
                 "accuracy": accuracy_score,
             }
-        )
+        else:
+            accuracy_weight = 1 - format_weight - hallucination_weight
+            overall = (
+                accuracy_weight * accuracy_score
+                + format_weight * format_score
+                + hallucination_weight * hallucination_score
+            )
+            score = {
+                "overall": overall,
+                "format": format_score,
+                "accuracy": accuracy_score,
+                "hallucination": hallucination_score,
+            }
+
+        scores.append(score)
 
     return scores

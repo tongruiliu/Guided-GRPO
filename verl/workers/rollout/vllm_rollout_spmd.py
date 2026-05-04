@@ -218,7 +218,9 @@ class vLLMRollout(BaseRollout):
                         model=verifier_model_path,
                         skip_tokenizer_init=False,
                         trust_remote_code=config.verifier.trust_remote_code,
-                        load_format="dummy",
+                        # The actor rollout engine uses dummy weights because FSDP weights are synced into it
+                        # before generation. The verifier is standalone, so it must load real weights here.
+                        load_format="auto",
                         dtype=PrecisionType.to_str(PrecisionType.to_dtype(config.dtype)),
                         seed=config.seed,
                         max_model_len=config.max_model_len or config.prompt_length + config.response_length,
