@@ -22,6 +22,7 @@ To provide context for the RL stage, the full framework includes:
 ## 🛠️ Features
 - Supported models: Qwen2/Qwen2.5/Qwen3 (text), Qwen2‑VL/Qwen2.5‑VL/Qwen3‑VL
 - Supported algorithms: Guided‑GRPO, GRPO, DAPO, GSPO, CISPO, Reinforce
+- Hybrid rollout engines: FSDP training with vLLM or SGLang rollout (`worker.rollout.name`)
 - Supported datasets: any dataset that follows the [Data Format](#data-format)
 
 ---
@@ -34,7 +35,9 @@ To provide context for the RL stage, the full framework includes:
 
 ## 📂 Code Map
 - [`verl/workers/rollout/vllm_rollout_spmd.py`](verl/workers/rollout/vllm_rollout_spmd.py)  
-  Multi‑turn guided rollout (policy ↔ verifier) core implementation.
+  Multi‑turn guided rollout (policy ↔ verifier) core implementation for vLLM and SGLang backends.
+- [`verl/workers/sharding_manager/fsdp_vllm.py`](verl/workers/sharding_manager/fsdp_vllm.py): FSDP actor weight sync into the vLLM rollout engine.
+- [`verl/workers/sharding_manager/fsdp_sglang.py`](verl/workers/sharding_manager/fsdp_sglang.py): FSDP actor weight sync into the SGLang rollout engine.
 - [`verl/workers/rollout/config.py`](verl/workers/rollout/config.py)  
   Verifier configuration and default verifier prompt template.
 - [`verl/workers/reward/function.py`](verl/workers/reward/function.py)  
@@ -71,6 +74,7 @@ pip install -e .
 - Python >= 3.9
 - Ray (training orchestration)
 - vLLM (rollout backend)
+- SGLang (optional rollout backend; install with `pip install -e ".[sglang]"` when using `worker.rollout.name: sglang`)
 - CUDA‑capable GPU recommended
 - FSDP optional (config‑controlled)
 
@@ -143,10 +147,16 @@ Results are reported on MathVista (`test-mini`), MathVerse (`test-mini`), and MM
 ## 🧩 Configuration
 Key fields (YAML):
 - `data.max_prompt_length`, `data.max_response_length`
+- `worker.rollout.name` (`vllm` or `sglang`)
 - `worker.rollout.n`, `worker.rollout.max_model_len`, `worker.rollout.max_num_batched_tokens`
 - `worker.rollout.verifier.*` (enable, train_scope, model_path, use_http, max_turns, prompt_template, etc.)
 - `worker.reward.reward_function_kwargs.hallucination_weight` (optional, when verifier hallucination scoring is enabled)
 - `trainer.project_name`, `trainer.experiment_name`
+
+Rollout backend notes:
+- `worker.rollout.name: vllm` is the default FSDP + vLLM hybrid rollout path.
+- `worker.rollout.name: sglang` enables FSDP + SGLang rollout. Current limitation: set `worker.rollout.tensor_parallel_size: 1`; SGLang tensor-parallel rollout is blocked until the server-based TP path is added.
+- In both local rollout backends, actor rollout weights are initialized with dummy weights and synced from the FSDP actor before generation. Local verifier weights are loaded from `worker.rollout.verifier.model_path`.
 
 **Important**: ensure
 ```

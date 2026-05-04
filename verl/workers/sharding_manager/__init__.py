@@ -14,8 +14,9 @@
 
 
 from .base import BaseShardingManager
+from .fsdp_sglang import FSDPSGLangShardingManager
 from .fsdp_ulysses import FSDPUlyssesShardingManager
 from .fsdp_vllm import FSDPVLLMShardingManager
 
 
-__all__ = ["BaseShardingManager", "FSDPUlyssesShardingManager", "FSDPVLLMShardingManager"]
+__all__ = ["BaseShardingManager", "FSDPSGLangShardingManager", "FSDPUlyssesShardingManager", "FSDPVLLMShardingManager"]

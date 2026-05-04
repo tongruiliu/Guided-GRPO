@@ -63,6 +63,7 @@ worker:
       offload_optimizer: true  # true: more CPU memory; false: more GPU memory
 
   rollout:
+    name: vllm  # {vllm, sglang}; sglang currently requires tensor_parallel_size: 1
     n: 8
     temperature: 1.0
     top_p: 1.0

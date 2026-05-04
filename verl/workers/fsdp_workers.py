@@ -58,7 +58,7 @@ from ..utils.torch_dtypes import PrecisionType
 from ..utils.torch_functional import AnyPrecisionAdamW, get_constant_schedule_with_warmup, get_cosine_schedule_with_warmup
 from .config import ActorConfig, CriticConfig, FSDPConfig, ModelConfig, OptimConfig, WorkerConfig
 from .rollout import vLLMRollout
-from .sharding_manager import FSDPVLLMShardingManager
+from .sharding_manager import FSDPSGLangShardingManager, FSDPVLLMShardingManager
 from .sharding_manager.fsdp_ulysses import FSDPUlyssesShardingManager
 
 
@@ -357,6 +357,11 @@ class FSDPWorker(Worker):
         dp_size = self.world_size // tp_size
         if self.world_size % tp_size != 0:
             raise ValueError(f"rollout world size {self.world_size} is not divisible by tp size {tp_size}.")
+        rollout_backend = self.config.rollout.name.lower()
+        if rollout_backend not in {"vllm", "sglang"}:
+            raise ValueError("`worker.rollout.name` must be `vllm` or `sglang`.")
+        if rollout_backend == "sglang" and tp_size != 1:
+            raise ValueError("SGLang rollout currently supports `worker.rollout.tensor_parallel_size=1` only.")
 
         rollout_device_mesh = init_device_mesh("cuda", mesh_shape=(dp_size, tp_size), mesh_dim_names=("dp", "tp"))
         self.rollout = vLLMRollout(
@@ -365,13 +370,20 @@ class FSDPWorker(Worker):
             tokenizer=self.tokenizer,
             processor=self.processor,
         )
-        self.rollout_sharding_manager = FSDPVLLMShardingManager(
-            module=self.fsdp_module,
-            inference_engine=self.rollout.inference_engine,
-            device_mesh=rollout_device_mesh,
-            use_param_offload=self._use_param_offload,
-        )
-        print_gpu_memory_usage("After vllm init")
+        if rollout_backend == "sglang":
+            self.rollout_sharding_manager = FSDPSGLangShardingManager(
+                module=self.fsdp_module,
+                inference_engine=self.rollout.inference_engine,
+                use_param_offload=self._use_param_offload,
+            )
+        else:
+            self.rollout_sharding_manager = FSDPVLLMShardingManager(
+                module=self.fsdp_module,
+                inference_engine=self.rollout.inference_engine,
+                device_mesh=rollout_device_mesh,
+                use_param_offload=self._use_param_offload,
+            )
+        print_gpu_memory_usage(f"After {rollout_backend} init")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):

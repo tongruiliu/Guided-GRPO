@@ -35,6 +35,7 @@ def get_requires() -> list[str]:
 
 extra_require = {
     "dev": ["pre-commit", "ruff"],
+    "sglang": ["sglang"],
 }
 
 

@@ -21,6 +21,7 @@ from contextlib import contextmanager
 from typing import Any, Optional, Union
 import urllib.error
 import urllib.request
+from types import SimpleNamespace
 
 import numpy as np
 import torch
@@ -38,6 +39,149 @@ from .base import BaseRollout
 from .config import RolloutConfig
 
 VERIFIER_CONTINUE_PROMPT = "Please continue and provide the final answer in the required format."
+
+
+class SGLangEngineAdapter:
+    """Small adapter that exposes the subset of the vLLM API used by this rollout."""
+
+    def __init__(
+        self,
+        model_path: str,
+        config: RolloutConfig,
+        tokenizer: PreTrainedTokenizer,
+        load_format: str,
+        trust_remote_code: bool,
+    ):
+        try:
+            from sglang import Engine
+        except ImportError as exc:
+            raise ImportError(
+                "SGLang rollout backend requires `sglang`. Install it before setting "
+                "`worker.rollout.name=sglang`."
+            ) from exc
+
+        if config.tensor_parallel_size != 1:
+            raise ValueError("SGLang rollout currently supports `worker.rollout.tensor_parallel_size=1` only.")
+
+        self.tokenizer = tokenizer
+        self.engine = Engine(
+            model_path=model_path,
+            trust_remote_code=trust_remote_code,
+            load_format=load_format,
+            dtype=PrecisionType.to_str(PrecisionType.to_dtype(config.dtype)),
+            random_seed=config.seed,
+            context_length=config.max_model_len or config.prompt_length + config.response_length,
+            mem_fraction_static=config.gpu_memory_utilization,
+            max_total_tokens=config.max_num_batched_tokens,
+            disable_cuda_graph=config.enforce_eager,
+            disable_custom_all_reduce=True,
+        )
+
+    def sleep(self, level: int = 1):
+        if hasattr(self.engine, "release_memory_occupation"):
+            tags = ["kv_cache"] if level <= 1 else ["weights", "kv_cache"]
+            return self.engine.release_memory_occupation(tags=tags)
+        return None
+
+    def wake_up(self, tags: Optional[list[str]] = None):
+        if hasattr(self.engine, "resume_memory_occupation"):
+            return self.engine.resume_memory_occupation(tags=tags)
+        return None
+
+    def update_weights_from_tensor(self, named_tensors, load_format: Optional[str] = None, flush_cache: bool = True):
+        return self.engine.update_weights_from_tensor(
+            list(named_tensors),
+            load_format=load_format,
+            flush_cache=flush_cache,
+        )
+
+    def flush_cache(self):
+        if hasattr(self.engine, "flush_cache"):
+            return self.engine.flush_cache()
+        return None
+
+    def generate(self, prompts, sampling_params, use_tqdm: bool = False):
+        n = max(1, int(getattr(sampling_params, "n", 1)))
+        flat_inputs = []
+        for prompt in prompts:
+            for _ in range(n):
+                flat_inputs.append(prompt)
+
+        prompt_texts, input_ids, image_data, video_data = [], [], [], []
+        has_text_prompt, has_token_prompt, has_images, has_videos = False, False, False, False
+        for item in flat_inputs:
+            if isinstance(item, str):
+                prompt_texts.append(item)
+                input_ids.append(None)
+                image_data.append(None)
+                video_data.append(None)
+                has_text_prompt = True
+            elif isinstance(item, dict):
+                mm_data = item.get("multi_modal_data") or {}
+                if "prompt_token_ids" in item:
+                    input_ids.append(list(item["prompt_token_ids"]))
+                    prompt_texts.append(None)
+                    has_token_prompt = True
+                else:
+                    prompt_texts.append(item.get("prompt", ""))
+                    input_ids.append(None)
+                    has_text_prompt = True
+
+                images = mm_data.get("image")
+                videos = mm_data.get("video")
+                image_data.append(images)
+                video_data.append(videos)
+                has_images = has_images or images is not None
+                has_videos = has_videos or videos is not None
+            else:
+                raise TypeError(f"Unsupported SGLang prompt type: {type(item)}")
+
+        if has_text_prompt and has_token_prompt:
+            raise ValueError("SGLang batch cannot mix text prompts and token-id prompts.")
+
+        kwargs = {
+            "sampling_params": self._sampling_params_to_dict(sampling_params),
+        }
+        if has_token_prompt:
+            kwargs["input_ids"] = input_ids
+        else:
+            kwargs["prompt"] = prompt_texts
+        if has_images:
+            kwargs["image_data"] = image_data
+        if has_videos:
+            kwargs["video_data"] = video_data
+
+        outputs = self.engine.generate(**kwargs)
+        if isinstance(outputs, dict):
+            outputs = [outputs]
+
+        grouped_outputs = []
+        for group_idx in range(0, len(outputs), n):
+            group = outputs[group_idx : group_idx + n]
+            grouped_outputs.append(SimpleNamespace(outputs=[self._to_completion_output(output) for output in group]))
+        return grouped_outputs
+
+    def _sampling_params_to_dict(self, sampling_params) -> dict[str, Any]:
+        params = {
+            "max_new_tokens": getattr(sampling_params, "max_tokens", None),
+            "temperature": getattr(sampling_params, "temperature", None),
+            "top_p": getattr(sampling_params, "top_p", None),
+            "top_k": getattr(sampling_params, "top_k", None),
+            "skip_special_tokens": False,
+        }
+        if getattr(sampling_params, "stop", None):
+            params["stop"] = getattr(sampling_params, "stop")
+        return {key: value for key, value in params.items() if value is not None}
+
+    def _to_completion_output(self, output: dict[str, Any]):
+        text = output.get("text") or output.get("output_str") or output.get("output", "")
+        token_ids = output.get("output_ids")
+        if token_ids is None:
+            meta_info = output.get("meta_info") or {}
+            token_ids = meta_info.get("output_ids")
+        if token_ids is None:
+            token_ids = self.tokenizer.encode(text, add_special_tokens=False)
+        return SimpleNamespace(token_ids=list(token_ids), text=str(text))
 
 
 def _repeat_interleave(value: Union[torch.Tensor, np.ndarray], repeats: int) -> Union[torch.Tensor, np.ndarray]:
@@ -125,6 +269,9 @@ class vLLMRollout(BaseRollout):
         self.pad_token_id = tokenizer.pad_token_id
         self.tokenizer = tokenizer
         self.processor = processor
+        self.rollout_backend = config.name.lower()
+        if self.rollout_backend not in {"vllm", "sglang"}:
+            raise ValueError("`worker.rollout.name` must be `vllm` or `sglang`.")
         self.verifier_tokenizer = None
         self.use_tqdm = (self.rank == 0) and (not config.disable_tqdm)
         if config.tensor_parallel_size > torch.distributed.get_world_size():
@@ -139,26 +286,35 @@ class vLLMRollout(BaseRollout):
             if config.limit_images:
                 engine_kwargs["limit_mm_per_prompt"] = {"image": config.limit_images}
 
-        with _patch_vllm_dist_env():
-            self.inference_engine = LLM(
-                model=model_path,
-                skip_tokenizer_init=False,
-                trust_remote_code=config.trust_remote_code,
+        if self.rollout_backend == "sglang":
+            self.inference_engine = SGLangEngineAdapter(
+                model_path=model_path,
+                config=config,
+                tokenizer=tokenizer,
                 load_format="dummy",
-                dtype=PrecisionType.to_str(PrecisionType.to_dtype(config.dtype)),
-                seed=config.seed,
-                max_model_len=config.max_model_len or config.prompt_length + config.response_length,
-                distributed_executor_backend="external_launcher",
-                tensor_parallel_size=config.tensor_parallel_size,
-                gpu_memory_utilization=config.gpu_memory_utilization,
-                max_num_batched_tokens=config.max_num_batched_tokens,
-                disable_log_stats=config.disable_log_stats,
-                enforce_eager=config.enforce_eager,
-                disable_custom_all_reduce=True,
-                enable_chunked_prefill=config.enable_chunked_prefill,
-                enable_sleep_mode=config.enable_sleep_mode,
-                **engine_kwargs,
+                trust_remote_code=config.trust_remote_code,
             )
+        else:
+            with _patch_vllm_dist_env():
+                self.inference_engine = LLM(
+                    model=model_path,
+                    skip_tokenizer_init=False,
+                    trust_remote_code=config.trust_remote_code,
+                    load_format="dummy",
+                    dtype=PrecisionType.to_str(PrecisionType.to_dtype(config.dtype)),
+                    seed=config.seed,
+                    max_model_len=config.max_model_len or config.prompt_length + config.response_length,
+                    distributed_executor_backend="external_launcher",
+                    tensor_parallel_size=config.tensor_parallel_size,
+                    gpu_memory_utilization=config.gpu_memory_utilization,
+                    max_num_batched_tokens=config.max_num_batched_tokens,
+                    disable_log_stats=config.disable_log_stats,
+                    enforce_eager=config.enforce_eager,
+                    disable_custom_all_reduce=True,
+                    enable_chunked_prefill=config.enable_chunked_prefill,
+                    enable_sleep_mode=config.enable_sleep_mode,
+                    **engine_kwargs,
+                )
 
         # Offload vllm model to reduce peak memory usage.
         if config.enable_sleep_mode:
@@ -216,27 +372,36 @@ class vLLMRollout(BaseRollout):
                 verifier_enable_sleep_mode = False
                 # 验证器走 eager，避免 Torch Compile/triton autotune 在 profile_run 里触发 driver “invalid argument”。
                 verifier_enforce_eager = True
-                with _patch_vllm_dist_env():
-                    self.verifier_engine = LLM(
-                        model=verifier_model_path,
-                        skip_tokenizer_init=False,
-                        trust_remote_code=config.verifier.trust_remote_code,
-                        # The actor rollout engine uses dummy weights because FSDP weights are synced into it
-                        # before generation. The verifier is standalone, so it must load real weights here.
+                if self.rollout_backend == "sglang":
+                    self.verifier_engine = SGLangEngineAdapter(
+                        model_path=verifier_model_path,
+                        config=config,
+                        tokenizer=tokenizer,
                         load_format="auto",
-                        dtype=PrecisionType.to_str(PrecisionType.to_dtype(config.dtype)),
-                        seed=config.seed,
-                        max_model_len=config.max_model_len or config.prompt_length + config.response_length,
-                        distributed_executor_backend="external_launcher",
-                        tensor_parallel_size=config.tensor_parallel_size,
-                        gpu_memory_utilization=config.gpu_memory_utilization,
-                        max_num_batched_tokens=config.max_num_batched_tokens,
-                        disable_log_stats=config.disable_log_stats,
-                        enforce_eager=verifier_enforce_eager,
-                        disable_custom_all_reduce=True,
-                        enable_chunked_prefill=config.enable_chunked_prefill,
-                        enable_sleep_mode=verifier_enable_sleep_mode,
+                        trust_remote_code=config.verifier.trust_remote_code,
                     )
+                else:
+                    with _patch_vllm_dist_env():
+                        self.verifier_engine = LLM(
+                            model=verifier_model_path,
+                            skip_tokenizer_init=False,
+                            trust_remote_code=config.verifier.trust_remote_code,
+                            # The actor rollout engine uses dummy weights because FSDP weights are synced into it
+                            # before generation. The verifier is standalone, so it must load real weights here.
+                            load_format="auto",
+                            dtype=PrecisionType.to_str(PrecisionType.to_dtype(config.dtype)),
+                            seed=config.seed,
+                            max_model_len=config.max_model_len or config.prompt_length + config.response_length,
+                            distributed_executor_backend="external_launcher",
+                            tensor_parallel_size=config.tensor_parallel_size,
+                            gpu_memory_utilization=config.gpu_memory_utilization,
+                            max_num_batched_tokens=config.max_num_batched_tokens,
+                            disable_log_stats=config.disable_log_stats,
+                            enforce_eager=verifier_enforce_eager,
+                            disable_custom_all_reduce=True,
+                            enable_chunked_prefill=config.enable_chunked_prefill,
+                            enable_sleep_mode=verifier_enable_sleep_mode,
+                        )
                 if verifier_enable_sleep_mode:
                     self.verifier_engine.sleep(level=1)
                 verifier_sampling_kwargs = {
