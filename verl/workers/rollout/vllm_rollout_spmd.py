@@ -449,8 +449,8 @@ class vLLMRollout(BaseRollout):
             convo_messages = self._ensure_message_list(messages)
             state = {
                 "messages": convo_messages,
-                "prompt_history": [],
-                "assistant_tokens": [],
+                "last_prompt_tokens": None,
+                "last_assistant_tokens": None,
                 "multi_modal": mm_data,
                 "ground_truth": ground_truth,
                 "hallucination_score_sum": 0.0,
@@ -505,7 +505,7 @@ class vLLMRollout(BaseRollout):
                             self._mm_debug_printed = True
                     else:
                         prompt_token_ids = self.tokenizer.encode(prompt_text, add_special_tokens=False)
-                    state["prompt_history"].append(prompt_token_ids)
+                    state["last_prompt_tokens"] = prompt_token_ids
                     if state["multi_modal"] is not None:
                         vllm_input = {"prompt": prompt_text, "multi_modal_data": state["multi_modal"]}
                     else:
@@ -518,7 +518,7 @@ class vLLMRollout(BaseRollout):
                 for idx, completion in zip(active_indices, completions):
                     output = completion.outputs[0]
                     response_tokens = output.token_ids
-                    conversation_states[idx]["assistant_tokens"].append(response_tokens)
+                    conversation_states[idx]["last_assistant_tokens"] = response_tokens
                     response_text = self.tokenizer.decode(response_tokens, skip_special_tokens=True).strip()
                     conversation_states[idx]["messages"].append({"role": "assistant", "content": response_text})
                     conversation_states[idx]["last_assistant_has_final"] = self._has_final_answer(response_text)
@@ -565,9 +565,10 @@ class vLLMRollout(BaseRollout):
         prompt_inputs, prompt_attention_masks, prompt_position_ids = [], [], []
         response_token_list = []
         for state in conversation_states:
-            if not state["prompt_history"] or not state["assistant_tokens"]:
+            prompt_tokens = state.get("last_prompt_tokens")
+            response_tokens = state.get("last_assistant_tokens")
+            if prompt_tokens is None or response_tokens is None:
                 raise RuntimeError("Each sample must have at least one assistant response in multi-turn mode.")
-            prompt_tokens = state["prompt_history"][-1]
             prompt_tensor = torch.tensor(prompt_tokens, dtype=torch.long, device=device)
             attention_tensor = torch.ones_like(prompt_tensor, dtype=torch.long)
             position_tensor = torch.arange(len(prompt_tokens), dtype=torch.long, device=device)
@@ -583,7 +584,7 @@ class vLLMRollout(BaseRollout):
             prompt_inputs.append(prompt_tensor)
             prompt_attention_masks.append(attention_tensor)
             prompt_position_ids.append(position_tensor)
-            response_token_list.append(state["assistant_tokens"][-1])
+            response_token_list.append(response_tokens)
 
         input_ids = torch.stack(prompt_inputs, dim=0)
         attention_mask = torch.stack(prompt_attention_masks, dim=0)
@@ -754,23 +755,6 @@ class vLLMRollout(BaseRollout):
                         parts.append("[VIDEO]")
             return "\n".join(part for part in parts if part)
         return str(content)
-
-    def _extract_hallucination_ratio(self, messages: list[dict[str, Any]]) -> float:
-        """Parse verifier `[SCORE] hallucination_detect=` lines and average them."""
-        scores = []
-        for message in messages:
-            if message.get("role") != "user":
-                continue
-            content = self._flatten_message_content(message.get("content", ""))
-            if content.strip() == self.verifier_stop_token:
-                continue
-            match = re.search(r"\[SCORE\]\s*hallucination_detect\s*=\s*([01])", content)
-            if match:
-                scores.append(int(match.group(1)))
-
-        if not scores:
-            return 0.5  # neutral when verifier did not return scores
-        return float(sum(scores)) / len(scores)
 
     def _format_conversation_for_verifier(self, messages: list[dict[str, Any]]) -> str:
         lines = []
